@@ -166,4 +166,3 @@ Contact: karl.noupuu@hotmail.com
 
 - Tartu Observatory for providing access to the echelle spectrograph
 - Tõnis Eenmäe for supervision and guidance
-```
