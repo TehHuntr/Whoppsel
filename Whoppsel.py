@@ -32,29 +32,78 @@ def order_detector(image_data,
                    max_signal           : int   = 6000000,
                    gauss_width_at       : float = 0.5,
                    order_pix52_loc      : int   = 1220):
+    '''
+    Detects echelle orders in a 2D spectrographic image.
+
+    Uses vertical slice analysis and Gaussian fitting to identify
+    spectral order locations and widths. Creates a 1D spectrum
+    by summing vertical slices centered at vert_slice_idx ±
+    vert_slice_radius, then performs peak detection and refinement
+    via Gaussian fitting.
+
+    Algorithm:
+        1. Initial peak detection using scipy.signal.find_peaks
+        2. Gaussian fitting at each peak for increased accuraccy
+        3. Calculate FWHM and edge locations for each detected order
+        4. Assign order numbers relative to reference order 52
+
+    Parameters
+    ----------
+    image_data : ndarray 
+        2D CCD-image data (y-axis x x-axis pixels)
+    vert_slice_idx : int, default = 1024
+        X-axis pixel location for the central vertical slice
+    vert_slice_radius : int, default = 10
+        Radius (pixels) used for vertical slice summation range
+    max_signal : int, default = 6000000
+        Maximum signal threshold for valid order peaks (excludes saturated orders)
+    gauss_width_at : float, default = 0.5
+        Relative height for (0 - 1.0) for Gaussian width measurement (0.5 = FWHM)
+    order_pix52_loc : int, default = 1220
+        Y-axis pixel location for order 52 (reference order for numbering)
+
+    Returns
+    ----------
+    detected_orders : pd.DataFrame
+        DataFrame containing detected order parameters:
+        - order_nums        : Order numbers (relative to order 52)
+        - order_centers     : Peak center positions (pixels)
+        - order_low_edge    : Lower edge of each order (pixels)
+        - order_high_edge   : Upper edge of each order (pixels)
+        - order_fwhms       : Full width at half maximum values
+    '''
+
     nx, ny = np.shape(image_data)
+
     # Checking for user defined parameter validity or UserErrors
+
     ## IndexError for out of bounds indexing
     if (vert_slice_idx > (nx - 1)) or (vert_slice_idx < 0):
         raise IndexError(f"x-axis index {vert_slice_idx} out of bounds for image shape [{0}:{nx - 1}, {0}:{ny - 1}]")
+    
     ## ValueError for gaussian width
     if (gauss_width_at <= 0) or (gauss_width_at > 1.0):
         raise ValueError(f"Gaussian width percentage should fall into the range (0.0, 1.0]")
+    
     ## Warning for vertical slice radius, that might result in a non uniform vertical slice of data
     if ((vert_slice_idx - vert_slice_radius) < 0) or ((vert_slice_idx + vert_slice_radius) > nx):
         warnings.warn(f"Defined vertical slice radius {vert_slice_radius} extends over"
                       f"image bounds (0:{nx}, 0:{ny}).", UserWarning)
 
-    # Defining a slice of the image used order location detection
+
+    ## Defining a slice of the image used order location detection
     vert_slice = image_data[:,
                             max(0, vert_slice_idx - vert_slice_radius):
                             min(nx, vert_slice_idx + vert_slice_radius)]
+    
     # ---------------------- SLICING ----------------------
     x_data = np.arange(0, 2048, 1)
     y_data = sum(np.transpose(vert_slice))
+
     # ---------------------- INITIAL PEAK DETECTION ----------------------
     initial_peaks, _ = find_peaks(y_data, prominence = 10. * np.median(y_data))
     initial_peaks = [i for i in initial_peaks if y_data[i] < max_signal]
+
     # ---------------------- SECONDARY PEAK DETECTION ----------------------
     peak_fwhms, peak_centers, peak_los, peak_his = [], [], [], []
     unrounded_peak_centers = []
@@ -100,7 +149,58 @@ def order_tracer(image_data,
                  refine_poly_order      : int = 4,
                  refine_x_min           : int = 500,
                  refine_x_max           : int = 1500):
-    
+    '''
+    Traces the echelle-spectra orders using the relevant data on the detected
+    orders using order_detector.
+    Traces echelle order positions across the CCD detector matrix.
+
+    Uses an iterative box-window approach to map order curvature. Starts
+    with a narrow central region (where orders are straighter) and fits a polynomial
+    to the detected positions. This polynomial guides subsequent refinement passes
+    that extend the trace toward the curved order edges.
+
+    The function stores both initial and refined trace coefficients, allowing comparison
+    of trace quality vs. computational cost.
+
+    Algorithm:
+        1. Initial trace: Box-window scan in central region (trace_x_min to trace_x_max)
+        2. Fit polynomial of degree trace_poly_order to initial positions
+        3. Refinement: Use polynomial as guide for extended tracing
+        4. Repeat refinement refine_count times with higher-order polynomial. Each repeat increases the maximum extent of the refinement region
+        5. Store both initial and refined polynomial coefficients
+
+    Parameters
+    ----------
+    image_data : ndarray 
+        2D CCD-image data
+    order_locs : pd.DataFrame
+        DataFrame from order_detector() containing order centers and edges
+    trace_window_radius : int, default = 10
+        Half-height (pixels) of box window in y-axis direction
+    trace_poly_order : int, default = 2
+        Polynomial degrees for initial trace fitting
+    trace_x_min : int, default = 800
+        Starting x-axis position (pixels) for initial trace
+    trace_x_max : int, default = 1100
+        Ending x-axis position (pixels) for initial trace
+    refine_count : int, default = 3
+        Number of iterative refinement passes
+    refine_poly_order : int, default = 4
+        Polynomial degree for refined trace fitting
+    refine_x_min : int, default = 500
+        Maximum starting x-axis position (pixels) for refined trace (each iterative pass extends towards this value)
+    refine_x_max : int, default = 1500
+        Maximum ending x-axis position (pixels) for refined trace (each iterative pass extends towards this value)
+
+    Returns
+    ----------
+    order_locs : pd.DataFrame
+        Input DataFrame with added columns:
+        - init_trace_coeffs: Polynomial coefficients from initial trace
+        - ref_trace_coeffs: Polynomial coefficients from refined trace
+    '''
+
+
     order_centers = order_locs["order_centers"]
     order_poly_coeffs, refined_poly_coeffs = [], []
 
@@ -159,7 +259,39 @@ def order_extractor(image_data,
                     order_locs,
                     ext_x_min : int = 500,
                     ext_x_max : int = 1500):
-    
+    '''
+    Extracts 1D spectra from 2D echelle orders using traced positions.
+
+    Creates pixel masks for each order based on trace polynomials,
+    order boundaries, and order centers, then sums the masked 2D regions along the spatial
+    direction to produce 1D spectra. The extraction region is defined
+    by the order's lower/upper edges and follows the curved trace across
+    the detector.
+
+    Algorithm:
+        1. Generate extraction mask using trace coefficients, order edges, and order centers.
+        2. For each x-position, identify y-pixels belonging to the order
+        3. Sum counts along spatial (y) direction at each wavelength (x) position
+        4. Store resulting 1D spectrum [x_data, y_data] for each order
+
+    Parameters
+    ----------
+    image_data : ndarray 
+        2D CCD-image data
+    order_locs : pd.DataFrame
+        DataFrame from order_tracer() with trace coefficients
+    ext_x_min : int, default = 500
+        Starting x-axis pixels for extraction region
+    ext_x_max : int, default = 1500
+        Ending x-axis pixels for extraction region
+
+    Returns
+    ---------- 
+    order_locs : pd.DataFrame
+        Input DataFrame with added column:
+        - spectra: List of [x_array, y_array] pairs for each order's 1D spectrum
+    '''
+
     order_centers   = order_locs["order_centers"]
     order_lows      = order_locs["order_low_edge"]
     order_highs     = order_locs["order_high_edge"]
@@ -302,17 +434,77 @@ def _get_ordernums(order_centers, order_pix52_loc):
     return [52 + (loc_52 - i) for i in range(len(order_centers))]
 
 
-def cross_correlate(datasets : list,
-                     dataset_positions : list,
-                     dataset_base_corr : int,
-                     order_to_correlate : int,
-                     correlation_method : str = "fft",
-                     correlation_mode : str = "full",
-                     use_with : str = "linear",
-                     gauss_fit_region : int = 20,
-                     show_correlation_plot : bool = True,
-                     graph_dump : bool = False,
-                     graph_dump_loc : str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corr_graph_dump")):
+def cross_correlate(datasets                : list,
+                    analysis_variable       : list,
+                    dataset_base_corr       : int,
+                    order_to_correlate      : int,
+                    correlation_method      : str = "fft",
+                    correlation_mode        : str = "full",
+                    use_with                : str = "linear",
+                    gauss_fit_region        : int = 20,
+                    show_correlation_plot   : bool = True,
+                    graph_dump              : bool = False,
+                    graph_dump_loc          : str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corr_graph_dump")):
+    '''
+    Measures spectral line broadening across experimental conditions via cross-correlation.
+    
+    Compares extracted 1D spectra to quantify changes in spectral line width (FWHM).
+    Uses cross-correlation to measure pixel-level shifts and Gaussian
+    fitting of the correlation peak to achieve sub-pixel precision.
+
+    The correlation peak's FWHM indicates spectral line broadening, which reflects
+    focus quality and instrumental stability across different conditions.
+
+    Algorithm:
+        1. Select specified order from all datasets
+        2. Cross-correlate each spectrum agaisnt the reference spectrum (dataset_base_correlate)
+        3. Fit Gaussian (with linear or polynomial background) to correlation peak
+        4. Extract peak FWHM and position with uncertainties from covariance matrix
+        5. Optionally plot correlation functions for quality control
+
+    Parameters
+    ----------
+    datasets : list of pd.DataFrame
+        List of order_locs DataFrames from order_extract(), one per 
+    analysis_variable : list of list
+        Independent variable values corresponding toe each dataset.
+        Used to label measurements when analysing how spectral properties change with experimental conditions.
+    dataset_base_corr : int
+        Index of reference dataset for cross-correlation
+    order_to_correlate : int
+        Echelle order number to analyse
+    correlation_method : str, default = "fft"
+        scipy.signal.correlate method: "fft" (fast) or "direct"
+    correlation_mode : str, default = "full"
+        scipy.signal.correlate mode: "full", "valid", or "same"
+    use_with : str, default = "linear"
+        Fitting model: "linear" (Gaussian + linear background) or "poly2d" (Gaussian + quadratic background)
+    gauss_fit_region : int, default = 20
+        Pixels around correlation peak used for Gaussian fitting
+    show_correlation_plot : bool, default = "True"
+        If True, display correlation plots
+    graph_dump : bool, default = "False"
+        If True, save correlation plots to disk
+    graph_dump_loc : str, optional
+        Directory path for saved plots
+
+    Returns
+    ----------
+    list of [analysis_variable, peak_fwhms, peak_fwhms_errs]
+        analysis_variable:
+            analysis_positions: list of floats
+                Independent variable values for successfully analyzed datasets
+                (matches input analysis_variable, excluding failed correlations)
+            peak_fwhms: list of floats
+                Correlation peak FWHMS in pixels (spectral line broadening metric)
+            peak_fwhms_errs: list of floats
+                Standard errors on peak_fwhms from Gaussian fit covariance matrix
+
+    Notes
+    ----------
+    If correlation peak detection or fitting fails for a dataset, NaN values
+    are returned for that measurement and a UserWarning is issued.
+    '''
     # Narrow given dataset to specified order
     narrowed_datasets = []
     for i in range(len(datasets)):
@@ -363,7 +555,7 @@ def cross_correlate(datasets : list,
         except UserWarning as e:
             peak_fwhms.append(np.nan)
             peak_fwhms_errs.append(np.nan)
-            camera_positions.append(dataset_positions[i])
+            camera_positions.append(analysis_variable[i])
             warnings.warn(e)
             continue
         if use_with == "linear":
@@ -386,7 +578,7 @@ def cross_correlate(datasets : list,
 
         peak_fwhms.append(fwhm)
         peak_fwhms_errs.append(fwhm_err)
-        camera_positions.append(dataset_positions[i])
+        camera_positions.append(analysis_variable[i])
     if show_correlation_plot:
         if graph_dump:
             if not os.path.isdir(graph_dump_loc):
@@ -407,7 +599,63 @@ def v_curve_fitting(input_data_x : list,
                     show_plot : bool = True,
                     graph_dump : bool = False,
                     graph_dump_loc : str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vcurve_graph_dump")):
+    '''
+    Fits hyperbolic V-curve to determine optimal spectrograph CCD-camera focuser position.
+
+    Uses Levenberg-Marquardt non-linear least squares to fit a hyperbola to the
+    relationship between camera focuser position and spectral line FWHM.
+    The minimum of the fitted curve indicates the optimal focus position where
+    spectral resolution is maximized.
+
+    Physical model:
+        H(x, a, b, c, d) = b * sqrt(1 + (x - c)² / a²) + d
+
+        where:
+        - x: camera focuser position
+        - c: optimal focuser position (vertex x-coordinate)
+        - d: minimum FWHM at optimal focus (vertex y-coordinate)
+        - a, b: hyperbola shape parameters
+
+    Algorithm:
+        1. Remove NaN values from input data
+        2. Identify initial minimum FWHM position
+        3. Fit linear functions to left and right "wings" of V-curve
+        4. Calculate intersection point of linear fits for inital guess params
+        5. Use Levenberg-Marquadt to refine hyperbola parameters
+        6. Estimate parameter uncertainties from Jacobian covariance matrix
+
+    The Jacobian for residual minimization:
+        J = [∂H/∂a, ∂H/∂b, ∂H/∂c, ∂H/∂d]
+
+    Parameters
+    ----------
+    input_data_x : list of int
+        Camera focuser positions
+    input_data_y : list of float
+        Measured spectral line FWHMS (pixels) at each position
+    input_data_y_err : list of float
+        Standard error on FWHM measurements (for visualization)
+    slope_start_distance : int
+        Number of points to exclude near center when fitting linear wings
+        (avoids fitting lines to curved region near minimum)
+    current_order : int
+        Echelle order number (used for plot filename)
+    show_plot : bool
+        If True, display fitted V-curve with data points
+    graph_dump : bool
+        If True, save plot to disk
+    graph_dump_loc : str
+        Directory path for saved plots
     
+    Results
+    ----------
+    list of [fit_params.x, fit_errors]
+        fit_params : ndarray of shape(4,)
+            Fitted hyperbola parameters [a, b, c, d]
+            Key result: c is the optimal focus position
+        fit_errors : ndarray of shape (4,)
+            Standard errors on parameters from covariance matrix
+    '''
     input_data_x = np.array(input_data_x)[~np.isnan(np.array(input_data_y))]
     input_data_y_err = np.array(input_data_y_err)[~np.isnan(np.array(input_data_y))]
     input_data_y = np.array(input_data_y)[~np.isnan(np.array(input_data_y))]
