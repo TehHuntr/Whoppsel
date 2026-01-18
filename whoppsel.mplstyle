@@ -1,0 +1,28 @@
+text.usetex: True
+text.latex.preamble: \usepackage{amsmath}\usepackage{amssymb}
+font.family: serif
+font.serif: Computer Modern
+savefig.format: pdf
+savefig.bbox : tight
+legend.framealpha : 1
+legend.facecolor : white
+legend.fancybox : True
+## AXES
+axes.grid : True
+axes.labelsize : 12
+## TICKS
+xtick.major.size : 12
+ytick.major.size : 12
+xtick.direction : in
+ytick.direction : in
+## GRID
+grid.color : "#808080"
+grid.linestyle : --
+grid.linewidth : 0.5
+grid.alpha : 0.5
+## LINES
+lines.linewidth : 0.75
+lines.marker : "D"
+lines.markersize : 4
+
+## https://matplotlib.org/stable/users/explain/customizing.html
