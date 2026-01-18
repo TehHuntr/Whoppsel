@@ -28,6 +28,14 @@ for optimal camera focuser position determination.
                                   measure pixel-shifts in spectral line or echelle-order peak positions.
 - **V-Curve Fitting**: Determines optimal focuser positions using hyperbolic curve fitting with Levenberg-Marquardt optimization
 
+### Notes
+- The default values for functions are heavily based on the echelle-spectrograph at Tartu Observatory, pertaining to the unique
+  circumstances and different factors involved in the final spectrographic images.
+- When performing cross-correlation analysis for focuser position determination, it is best to use the most in-focus images
+  as the base for correlation.
+- V-curve fitting is heavily reliant on having enough data points further away from the region around optimal focuser position,
+  as these regions are used for tangent line fitting.
+
 ## Installation
 
 ### Requirements
