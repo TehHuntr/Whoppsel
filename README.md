@@ -1,5 +1,9 @@
 # Whoppsel: A toolkit for automated echelle-spectrograph data analysis
 
+![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)
+
 Python module/toolkit that contains functions for automated data
 analysis of echelle-spectrograph image data, developed for characterizing
 temperature-dependent performance of the Whoppshel echelle-spectrograph.
