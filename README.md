@@ -88,19 +88,19 @@ datasets = [ext_ords_1, ext_ords_2, ext_ords_3, ...]
 temperatures = [15.2, 18.5, 21.3, ...]  # °C
 
 results = cross_correlate(
-    datasets = datasets,
+    datasets           = datasets,
     analysis_variable = temperatures,
     dataset_base_corr = 0,
-    order_to_correlate = 52
+    ord_to_corr       = 52
 )
 
 # Step 5: Fit V-curve to find optimal focus
 positions, fwhms, fwhm_errors = results
 optimal_params, param_errors = v_curve_fitting(
-    input_data_x = positions,
-    input_data_y = fwhms,
-    input_data_y_err = fwhm_errors,
-    slope_start_distance = 2,
+    input_data_x           = positions,
+    input_data_y           = fwhms,
+    input_data_y_err       = fwhm_errors,
+    slope_start_distance   = 2,
     current_order = 52
 )
 
@@ -126,17 +126,19 @@ Extracts 1D spectra from 2D echelle orders using traced positions.
 
 ### `cross_correlate(datasets, analysis_variable, ...)`
 Measures spectral line broadening via cross-correlation between datasets.
+Measures changes in 1D-spectra (spectral line broadening, spectral line pixel shifts) via cross-correlation between datasets.
 
 **Returns**: `[analysis_positions, peak_fwhms, fwhm_errors]`
 
 ### `v_curve_fitting(input_data_x, input_data_y, ...)`
-Fits hyperbolic V-curve to determine optimal focus position using Levenberg-Marquardt optimization.
+Fits hyperbolic V-curve to determine optimal focuser position using Levenberg-Marquardt non-linear least squares minimization.
 
 **Returns**: `[fit_parameters, parameter_errors]` where `fit_parameters[2]` is the optimal focus position
 
 ## Scientific Background
 
-This pipeline was developed to study how temperature variations affect an echelle spectrograph's optical alignment. Key findings from the thesis work:
+This toolkit was developed in conjuction with the study on how temperature affects the quality of data collected from
+an echelle-spectrograph. Key findings from the thesis:
 
 - Temperature changes cause measurable focal plane shifts due to thermal expansion
 - Cross-correlation analysis enables sub-pixel precision in detecting these shifts
@@ -144,7 +146,7 @@ This pipeline was developed to study how temperature variations affect an echell
 
 ## File Structure
 ```
-spectrograph_pipeline.py    # Main pipeline functions
+Whoppsel.py    # Main pipeline functions
 ├── order_detector()         # Order detection
 ├── order_tracer()           # Order tracing
 ├── order_extractor()        # Spectral extraction
