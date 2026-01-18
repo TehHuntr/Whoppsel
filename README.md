@@ -1,31 +1,38 @@
-# Whoppsel: Echelle Spectrograph Analysis Pipeline
+# Whoppsel: A toolkit for automated echelle-spectrograph data analysis
 
-Python pipeline for automated analysis of echelle spectrograph data,
-developed for characterizing temperature-dependent performance of
-the Whoppsel echelle-spectrograph.
+Python module/toolkit that contains functions for automated data
+analysis of echelle-spectrograph image data, developed for characterizing
+temperature-dependent performance of the Whoppshel echelle-spectrograph.
 
-Originally created for my BSc thesis in Physics at the University of Tartu,
-analysing thermal effects on spectral line positions and focus quality
-in the Tartu Observatory's echelle-spectrograph.
+Originally created for my BSc thesis in Physics at Tartu Observatory,
+University of Tartu. Used for analysing thermal effects on echelle
+order and spectral line positions on 2D spectrographic images.
 
 ## Overview
 
-This pipeline processes raw 2D CCD spectrograph images through automated
-order detection, tracing, extraction, and cross-correlation analysis
-to measure instrumental performance characteristics.
+The module contains functions that are capable of detecting, tracing,
+and extracting echelle orders with minimal intervention.
+
+Further, a robust cross-correlation analysis function is included for
+correlating orders over several datasets to quantify data quality metrics
+and assess the effects of temperature on gathered image data quality.
+
+A hyperbolic curve fitting function (v_curve_fitting) is also included
+for optimal camera focuser position determination.
 
 ### Key Capabilities
 - **Automated Order Detection**: Indentifies echelle-spectra orders in 2D CCD images using vertical slice analysis and Gaussian fitting
 - **Order Tracing**: Maps curved order positions across the detector using iterative polynomial fitting
 - **Spectral Extraction**: Converts 2D echelle orders to calibrated 1D spectra
-- **Cross-Correlation Analysis**: Measures spectral line broadening (FWHM) across experimental conditions
+- **Cross-Correlation Analysis**: Measures spectral line broadening (FWHM) across experimental conditions. Can also be used to
+                                  measure pixel-shifts in spectral line or echelle-order peak positions.
 - **V-Curve Fitting**: Determines optimal focuser positions using hyperbolic curve fitting with Levenberg-Marquardt optimization
 
 ## Installation
 
 ### Requirements
 ```bash
-pip install numpy pandas scipy astropy matplotlib
+pip install numpy pandas scipy matplotlib
 ```
 
 Or use the provided `requirements.txt`:
@@ -39,7 +46,6 @@ pip install -r requirements.txt
 - numpy
 - pandas
 - scipy
-- astropy
 - matplotlib
 
 ## Usage
@@ -55,38 +61,47 @@ from Whoppsel import (
 )
 from astropy.io import fits
 
+# Load pre-processed spectrographic images (FITS format)
 
-# Load raw spectrograph data (FITS format)
+# For order detection and tracing the usage of flat images is encouraged
+# due to the echelle-orders having a continous and higher signal.
+
+# Calibration images (for example using a ThAr spectral lamp) should be used
+# for order extraction and further data analysis.
+
 image_data = fits.open('ThAr_spectrum.fits')[0].data
 
+imagedata_flat = fits.open('Flat_image.fits')[0].data
+imagedata_calib = fits.open('Calibration_image.fits')[0].data
+
 # Step 1: Detect echelle orders
-orders = order_detector(image_data)
+detected_orders = order_detector(imagedata_flat)
 
 # Step 2: Trace order positions across detector
-orders = order_tracer(image_data, orders)
+traced_orders = order_tracer(imagedata_flat, detected_orders)
 
 # Step 3: Extract 1D spectra
-orders = order_extractor(image_data, orders)
+extracted_orders = order_extractor(imagedata_calib, traced_orders)
 
 # Step 4: Analyze multiple datasets (e.g., at different temperatures)
-datasets = [orders1, orders2, orders3, ...]
+datasets = [ext_ords_1, ext_ords_2, ext_ords_3, ...]
 temperatures = [15.2, 18.5, 21.3, ...]  # °C
 
 results = cross_correlate(
-    datasets=datasets,
-    analysis_variable=temperatures,
-    dataset_base_corr=0,
-    order_to_correlate=52
+    datasets = datasets,
+    analysis_variable = temperatures,
+    dataset_base_corr = 0,
+    order_to_correlate = 52
 )
 
 # Step 5: Fit V-curve to find optimal focus
 positions, fwhms, fwhm_errors = results
 optimal_params, param_errors = v_curve_fitting(
-    input_data_x=positions,
-    input_data_y=fwhms,
-    input_data_y_err=fwhm_errors,
-    slope_start_distance=2,
-    current_order=52
+    input_data_x = positions,
+    input_data_y = fwhms,
+    input_data_y_err = fwhm_errors,
+    slope_start_distance = 2,
+    current_order = 52
 )
 
 print(f"Optimal focus position: {optimal_params[2]:.2f} ± {param_errors[2]:.2f}")
