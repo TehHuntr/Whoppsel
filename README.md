@@ -21,7 +21,7 @@ A hyperbolic curve fitting function (v_curve_fitting) is also included
 for optimal camera focuser position determination.
 
 ### Key Capabilities
-- **Automated Order Detection**: Indentifies echelle-spectra orders in 2D CCD images using vertical slice analysis and Gaussian fitting
+- **Automated Order Detection**: Identifies echelle-spectra orders in 2D CCD images using vertical slice analysis and Gaussian fitting
 - **Order Tracing**: Maps curved order positions across the detector using iterative polynomial fitting
 - **Spectral Extraction**: Converts 2D echelle orders to calibrated 1D spectra
 - **Cross-Correlation Analysis**: Measures spectral line broadening (FWHM) across experimental conditions. Can also be used to
@@ -60,13 +60,7 @@ pip install -r requirements.txt
 
 ### Basic Pipeline Workflow
 ```python
-from Whoppsel import (
-    order_detector, 
-    order_tracer, 
-    order_extractor,
-    cross_correlate,
-    v_curve_fitting
-)
+import Whoppsel as wpl
 from astropy.io import fits
 
 # Load pre-processed spectrographic images (FITS format)
@@ -83,29 +77,29 @@ imagedata_flat = fits.open('Flat_image.fits')[0].data
 imagedata_calib = fits.open('Calibration_image.fits')[0].data
 
 # Step 1: Detect echelle orders
-detected_orders = order_detector(imagedata_flat)
+detected_orders = wpl.order_detector(imagedata_flat)
 
 # Step 2: Trace order positions across detector
-traced_orders = order_tracer(imagedata_flat, detected_orders)
+traced_orders = wpl.order_tracer(imagedata_flat, detected_orders)
 
 # Step 3: Extract 1D spectra
-extracted_orders = order_extractor(imagedata_calib, traced_orders)
+extracted_orders = wpl.order_extractor(imagedata_calib, traced_orders)
 
 # Step 4: Analyze multiple datasets (e.g., at different temperatures)
 datasets = [ext_ords_1, ext_ords_2, ext_ords_3, ...]
-temperatures = [15.2, 18.5, 21.3, ...]  # °C
+positions = [40000, 45000, 50000, ...]  # Focuser positions
 
-results = cross_correlate(
+results = wpl.cross_correlate(
     datasets           = datasets,
-    analysis_variable = temperatures,
+    analysis_variable = positions,
     dataset_base_corr = 0,
     ord_to_corr       = 52
 )
 
 # Step 5: Fit V-curve to find optimal focus
-positions, fwhms, fwhm_errors = results
-optimal_params, param_errors = v_curve_fitting(
-    input_data_x           = positions,
+analysis_vars, fwhms, fwhm_errors = results
+optimal_params, param_errors = wpl.v_curve_fitting(
+    input_data_x           = analysis_vars,
     input_data_y           = fwhms,
     input_data_y_err       = fwhm_errors,
     slope_start_distance   = 2,
@@ -133,7 +127,6 @@ Extracts 1D spectra from 2D echelle orders using traced positions.
 **Returns**: Updated DataFrame with extracted `[x_data, y_data]` spectra for each order
 
 ### `cross_correlate(datasets, analysis_variable, ...)`
-Measures spectral line broadening via cross-correlation between datasets.
 Measures changes in 1D-spectra (spectral line broadening, spectral line pixel shifts) via cross-correlation between datasets.
 
 **Returns**: `[analysis_positions, peak_fwhms, fwhm_errors]`
