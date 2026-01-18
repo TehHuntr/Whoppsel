@@ -166,7 +166,7 @@ Whoppsel.py    # Main pipeline functions
 
 If you use this code in your research, please cite:
 ```
-Karl Nõupuu (2026). "Tartu Observatooriumi ešell-spektrograafi võimekuse karakteriseerimine"
+Karl Nõupuu (2025). "Tartu Observatooriumi ešell-spektrograafi võimekuse karakteriseerimine"
 Bakalaureusetöö, Tartu Ülikool.
 ```
 
